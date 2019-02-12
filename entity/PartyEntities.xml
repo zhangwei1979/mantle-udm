@@ -32,7 +32,8 @@ along with this software (see the LICENSE.md file). If not, see
         <field name="pseudoId" type="id" default="partyId"/>
         <field name="partyTypeEnumId" type="id"/>
         <field name="disabled" type="text-indicator" enable-audit-log="true"/>
-        <field name="ownerPartyId" type="id" enable-audit-log="update">
+        <field name="customerStatusId" type="id"/>
+        <field name="ownerPartyId" type="id" enable-audit-log="update" default="'_NA_'">
             <description>If applicable, such as for customer records, the other Party that 'owns' the data for this Party.</description></field>
         <field name="externalId" type="id"/>
         <field name="dataSourceId" type="id"/>
@@ -45,6 +46,8 @@ along with this software (see the LICENSE.md file). If not, see
 
         <relationship type="one" title="PartyType" related="moqui.basic.Enumeration" short-alias="type">
             <key-map field-name="partyTypeEnumId"/></relationship>
+        <relationship type="one" title="CustomerStatus" related="moqui.basic.StatusItem">
+            <key-map field-name="customerStatusId" related="statusId"/></relationship>
         <relationship type="one" title="Owner" related="mantle.party.Party" short-alias="owner">
             <key-map field-name="ownerPartyId"/></relationship>
         <relationship type="one" related="moqui.basic.DataSource"/>
@@ -81,7 +84,7 @@ along with this software (see the LICENSE.md file). If not, see
         <relationship type="many" related="moqui.security.UserAccount" short-alias="userAccounts">
             <key-map field-name="partyId"/></relationship>
 
-        <index name="PARTY_ID_PSEUDO" unique="true"><index-field name="pseudoId"/></index>
+        <index name="PARTY_ID_PSEUDO" unique="true"><index-field name="pseudoId"/><index-field name="ownerPartyId"/></index>
         <index name="PARTY_ID_EXT"><index-field name="externalId"/></index>
         <index name="PARTY_ID_MERGETO"><index-field name="mergedToPartyId"/></index>
 
@@ -167,7 +170,7 @@ along with this software (see the LICENSE.md file). If not, see
         <field name="salutation" type="text-medium"/>
         <field name="firstName" type="text-medium"/>
         <field name="middleName" type="text-medium"/>
-        <field name="lastName" type="text-medium" enable-audit-log="true"/>
+        <field name="lastName" type="text-medium" enable-audit-log="update"/>
         <field name="personalTitle" type="text-medium"/>
         <field name="suffix" type="text-medium"/>
         <field name="nickname" type="text-medium"/>
@@ -725,10 +728,60 @@ along with this software (see the LICENSE.md file). If not, see
         <relationship type="many" related="mantle.party.PartySettingTypeRole" short-alias="roles">
             <key-map field-name="partySettingTypeId"/></relationship>
         <seed-data>
+            <!-- Signature Required - here instead of in ShipmentEntities.xml for FK dependency -->
+            <moqui.basic.EnumerationType description="Signature Required" enumTypeId="SignatureRequired"/>
+            <moqui.basic.Enumeration enumCode="" description="None" enumId="PsrNone" sequenceNum="1" enumTypeId="SignatureRequired"/>
+            <moqui.basic.Enumeration enumCode="STANDARD" description="Standard" enumId="PsrStandard" sequenceNum="2" enumTypeId="SignatureRequired"/>
+            <moqui.basic.Enumeration enumCode="ADULT" description="Adult" enumId="PsrAdult" sequenceNum="3" enumTypeId="SignatureRequired"/>
+            <moqui.basic.Enumeration enumCode="CERTIFIED" description="Certified (USPS)" enumId="PsrCertified" sequenceNum="4" enumTypeId="SignatureRequired"/>
+            <moqui.basic.Enumeration enumCode="INDIRECT" description="Indirect (FedEx)" enumId="PsrIndirect" sequenceNum="5" enumTypeId="SignatureRequired"/>
+
+            <!-- Customer Settings -->
             <mantle.party.PartySettingType partySettingTypeId="CustomerSingleLot" description="Single Lot per Order"
                     enumTypeId="BooleanYN" defaultValue="BlN"><roles roleTypeId="Customer"/></mantle.party.PartySettingType>
             <mantle.party.PartySettingType partySettingTypeId="CustomerNewerInventory" description="Newer Inventory each Order"
                     enumTypeId="BooleanYN" defaultValue="BlN"><roles roleTypeId="Customer"/></mantle.party.PartySettingType>
+            <mantle.party.PartySettingType partySettingTypeId="CustomerRequireSign" description="Require Signature"
+                    enumTypeId="SignatureRequired" defaultValue="PsrNone"><roles roleTypeId="Customer"/></mantle.party.PartySettingType>
+
+            <mantle.party.PartySettingType partySettingTypeId="OrgInvoiceProductStoreId" description="Default Invoice Product Store ID">
+                <roles roleTypeId="OrgInternal"/></mantle.party.PartySettingType>
+
+            <!-- Address validate and default shipment gateways -->
+            <mantle.party.PartySettingType partySettingTypeId="ValidateAddressGatewayConfigId" description="Validate Address Gateway Config ID">
+                <roles roleTypeId="OrgInternal"/></mantle.party.PartySettingType>
+            <mantle.party.PartySettingType partySettingTypeId="DefaultShipmentGatewayConfigId" description="Default Shipment Gateway Config ID">
+                <roles roleTypeId="OrgInternal"/></mantle.party.PartySettingType>
+            <!-- PaymentMethod vault gateway - setting type per org for payment gateway config to use by default for CC vault -->
+            <!-- Support required for each payment gateway integration, org partyId is: PaymentMethod.ownerPartyId => Payment.ownerPartyId -->
+            <mantle.party.PartySettingType partySettingTypeId="VaultPaymentGatewayConfigId" description="Vault Payment Gateway Config ID">
+                <roles roleTypeId="OrgInternal"/></mantle.party.PartySettingType>
+
+            <!-- Print/PDF Template Location Settings -->
+            <mantle.party.PartySettingType partySettingTypeId="OrgTemplateShipmentInsert" description="Template Location Shipment Insert">
+                <roles roleTypeId="OrgInternal"/></mantle.party.PartySettingType>
+            <mantle.party.PartySettingType partySettingTypeId="OrgTemplateShipmentPick" description="Template Location Shipment Pick Sheet">
+                <roles roleTypeId="OrgInternal"/></mantle.party.PartySettingType>
+            <mantle.party.PartySettingType partySettingTypeId="OrgTemplateShipmentPack" description="Template Location Shipment Pack Sheet">
+                <roles roleTypeId="OrgInternal"/></mantle.party.PartySettingType>
+            <mantle.party.PartySettingType partySettingTypeId="OrgTemplateShipmentByPackage" description="Template Location Shipment By Package">
+                <roles roleTypeId="OrgInternal"/></mantle.party.PartySettingType>
+
+            <mantle.party.PartySettingType partySettingTypeId="OrgTemplateInvoicePrint" description="Template Location Invoice Print">
+                <roles roleTypeId="OrgInternal"/></mantle.party.PartySettingType>
+            <mantle.party.PartySettingType partySettingTypeId="OrgTemplateOrderPrint" description="Template Location Order Print">
+                <roles roleTypeId="OrgInternal"/></mantle.party.PartySettingType>
+
+            <mantle.party.PartySettingType partySettingTypeId="OrgTemplatePaymentCheck" description="Template Location Payment Check">
+                <roles roleTypeId="OrgInternal"/></mantle.party.PartySettingType>
+            <mantle.party.PartySettingType partySettingTypeId="OrgTemplatePaymentDetail" description="Template Location Payment Detail">
+                <roles roleTypeId="OrgInternal"/></mantle.party.PartySettingType>
+            <!-- TODO: support template location setting  -->
+            <mantle.party.PartySettingType partySettingTypeId="OrgTemplateReceivableStatement" description="Template Location Receivable Statement">
+                <roles roleTypeId="OrgInternal"/></mantle.party.PartySettingType>
+            <!-- TODO: support template location setting  -->
+            <mantle.party.PartySettingType partySettingTypeId="OrgTemplateFinancialAccountStatement" description="Template Location Financial Account Statement">
+                <roles roleTypeId="OrgInternal"/></mantle.party.PartySettingType>
         </seed-data>
     </entity>
     <entity entity-name="PartySettingTypeRole" package="mantle.party" use="configuration">
@@ -940,9 +993,9 @@ along with this software (see the LICENSE.md file). If not, see
 
         <field name="fromContactMechId" type="id"/>
         <field name="toContactMechId" type="id"/>
-        <field name="fromPartyId" type="id"/>
+        <field name="fromPartyId" type="id" enable-audit-log="update"/>
         <field name="fromRoleTypeId" type="id"/>
-        <field name="toPartyId" type="id"/>
+        <field name="toPartyId" type="id" enable-audit-log="update"/>
         <field name="toRoleTypeId" type="id"/>
 
         <field name="entryDate" type="date-time"/>

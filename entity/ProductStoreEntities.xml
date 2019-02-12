@@ -24,7 +24,11 @@ along with this software (see the LICENSE.md file). If not, see
             <description>The Organization Party that Orders, Invoices, GL transactions, etc will be associated with.</description></field>
         <field name="inventoryFacilityId" type="id"/>
         <field name="reservationOrderEnumId" type="id"/>
-        <field name="requirementMethodEnumId" type="id"/>
+        <field name="reservationAutoEnumId" type="id"/>
+        <field name="requireInventory" type="text-indicator"/>
+        <field name="returnPostalContactMechId" type="id"><description>Return postal address for shipping labels</description></field>
+        <field name="autoApproveDelay" type="number-integer"><description>Minimum time in minutes to wait before trying to auto-approve;
+            defaults to 0 which means auto-approve immediately (via SECA rule), otherwise delayed auto-approve handled with service job</description></field>
 
         <field name="storeDomain" type="text-short"><description>Store domain for use in emails</description></field>
         <field name="profileUrlPath" type="text-medium"><description>Path to profile page for use in emails</description></field>
@@ -36,8 +40,10 @@ along with this software (see the LICENSE.md file). If not, see
 
         <field name="requireCustomerRole" type="text-indicator"/>
         <field name="taxGatewayConfigId" type="id"/>
-        <field name="systemMessageRemoteId" type="id">
-            <description>Reference to the SystemMessageRemote record for the remote system this store is for.</description></field>
+        <field name="systemMessageRemoteId" type="id"><description>
+            Reference to the SystemMessageRemote record for the remote system this store is for such as a separate, integrated ecommerce app.
+            Note that SystemMessageRemote is extended with a productStoreId so that other SystemMessageRemotes know which store they are for (if applicable).
+        </description></field>
 
         <relationship type="one" title="Organization" related="mantle.party.Party" short-alias="organization">
             <key-map field-name="organizationPartyId"/></relationship>
@@ -45,8 +51,12 @@ along with this software (see the LICENSE.md file). If not, see
             <key-map field-name="inventoryFacilityId"/></relationship>
         <relationship type="one" title="AssetReservationOrder" related="moqui.basic.Enumeration" short-alias="assetReservationOrder">
             <key-map field-name="reservationOrderEnumId"/></relationship>
-        <relationship type="one" title="RequirementMethod" related="moqui.basic.Enumeration" short-alias="requirementMethod">
-            <key-map field-name="requirementMethodEnumId"/></relationship>
+        <relationship type="one" title="AssetReservationAuto" related="moqui.basic.Enumeration" short-alias="reservationAutoEnum">
+            <key-map field-name="reservationAutoEnumId"/></relationship>
+        <relationship type="one-nofk" title="Return" related="mantle.party.contact.ContactMech" short-alias="returnPostal">
+            <key-map field-name="returnPostalContactMechId"/></relationship>
+        <relationship type="one" title="Return" related="mantle.party.contact.PostalAddress" short-alias="returnPostalAddress">
+            <key-map field-name="returnPostalContactMechId"/></relationship>
 
         <relationship type="one" related="moqui.resource.wiki.WikiSpace" short-alias="wikiSpace"/>
         <relationship type="one" title="DefaultCurrency" related="moqui.basic.Uom" short-alias="defaultCurrencyUom">
@@ -65,6 +75,8 @@ along with this software (see the LICENSE.md file). If not, see
         <relationship type="many" related="mantle.product.store.ProductStoreParty" short-alias="parties">
             <key-map field-name="productStoreId"/></relationship>
         <relationship type="many" related="mantle.product.store.ProductStorePaymentGateway" short-alias="paymentGateways">
+            <key-map field-name="productStoreId"/></relationship>
+        <relationship type="many" related="mantle.product.store.ProductStoreSetting" short-alias="settings">
             <key-map field-name="productStoreId"/></relationship>
         <relationship type="many" related="mantle.product.store.ProductStoreShippingGateway" short-alias="shippingGateways">
             <key-map field-name="productStoreId"/></relationship>
@@ -85,25 +97,18 @@ along with this software (see the LICENSE.md file). If not, see
             <moqui.basic.Enumeration description="Lowest Unit Cost" enumId="AsResOrdCostLw" enumCode="acquireCost" enumTypeId="AssetReservationOrder"/>
             <moqui.basic.Enumeration description="No Reservation" enumId="AsResOrdNoRes" enumTypeId="AssetReservationOrder"/>
 
-            <!-- Product Requirement Method -->
-            <moqui.basic.EnumerationType description="Product Requirement Method" enumTypeId="RequirementMethod"/>
-            <!-- NONE: no requirement is created (default) -->
-            <moqui.basic.Enumeration description="No Requirement Created" enumId="PrqmNone" enumTypeId="RequirementMethod"/>
-            <!-- AUTO: a requirement is created every time a sales order is entered; This is useful to implement cross-dock shipping processes -->
-            <moqui.basic.Enumeration description="Automatic For Every Sales Order" enumId="PrqmAuto" enumTypeId="RequirementMethod"/>
-            <!-- STOCK: a requirement is created when qoh reaches the minimum stock quantity (from ProductFacility) -->
-            <moqui.basic.Enumeration description="When QOH Reaches Minimum Stock for Product-Facility" enumId="PrqmStockQoh" enumTypeId="RequirementMethod"/>
-            <!-- STOCK_ATP: a requirement is created when atp reaches the minimum stock quantity (from ProductFacility) -->
-            <moqui.basic.Enumeration description="When ATP Reaches Minimum Stock for Product-Facility" enumId="PrqmStockAtp" enumTypeId="RequirementMethod"/>
-            <!-- PRODRQM_DS: a drop ship group is created to trigger automatic creation of a purchase order (drop shipment) every time a sales order is created-->
-            <moqui.basic.Enumeration description="Drop-ship only" enumId="PrqmDropShip" enumTypeId="RequirementMethod"/>
-            <!-- PRODRQM_DSQOH: auto drop ship on low quantity on hand -->
-            <moqui.basic.Enumeration description="Auto drop-ship on low quantity" enumId="PrqmDropShipLowQoh" enumTypeId="RequirementMethod"/>
+            <!-- Asset (Inventory) Auto Reservation Trigger -->
+            <moqui.basic.EnumerationType description="Asset Auto Reservation" enumTypeId="AssetReservationAuto"/>
+            <moqui.basic.Enumeration description="No Auto Reserve" enumId="AsResAutoNone" enumTypeId="AssetReservationAuto"/>
+            <moqui.basic.Enumeration description="On Order Placed" enumId="AsResAutoPlaced" enumTypeId="AssetReservationAuto"/>
+            <moqui.basic.Enumeration description="On Order Approved" enumId="AsResAutoApproved" enumTypeId="AssetReservationAuto"/>
         </seed-data>
         <master>
-            <detail relationship="organization"/><detail relationship="inventoryFacility"/>
-            <detail relationship="assetReservationOrder"/><detail relationship="requirementMethod"/>
-            <detail relationship="defaultCurrencyUom"/><detail relationship="defaultSalesChannel"/>
+            <detail relationship="organization"/>
+            <detail relationship="inventoryFacility"/>
+            <detail relationship="assetReservationOrder"/>
+            <detail relationship="defaultCurrencyUom"/>
+            <detail relationship="defaultSalesChannel"/>
             <detail relationship="taxGatewayConfig"/>
 
             <detail relationship="categories"><detail relationship="category"/><detail relationship="type"/></detail>
@@ -118,6 +123,33 @@ along with this software (see the LICENSE.md file). If not, see
             <detail relationship="groups"><detail relationship="group"/></detail>
         </master>
     </entity>
+    <extend-entity entity-name="SystemMessageRemote" package="moqui.service.message">
+        <field name="productStoreId" type="id"/>
+        <relationship type="one" related="mantle.product.store.ProductStore"/>
+    </extend-entity>
+
+    <entity entity-name="ProductStoreApprove" package="mantle.product.store" use="configuration" cache="true">
+        <description>For per-store configurable pre-approve order validations</description>
+        <field name="storeApproveId" type="id" is-pk="true"/>
+        <field name="productStoreId" type="id"/>
+        <field name="serviceRegisterId" type="id" not-null="true"><description>Registered Service of type OrderValidate that implements the
+            mantle.order.OrderInfoServices.validate#Order interface</description></field>
+        <field name="fromDate" type="date-time"/>
+        <field name="thruDate" type="date-time"/>
+        <field name="sequenceNum" type="number-integer"/>
+        <relationship type="one" related="mantle.product.store.ProductStore" short-alias="store"/>
+        <relationship type="one" related="moqui.service.ServiceRegister" short-alias="serviceRegister"/>
+        <relationship type="many" related="mantle.product.store.ProductStoreApproveParam" short-alias="parameters">
+            <key-map field-name="storeApproveId"/></relationship>
+        <seed-data><moqui.basic.Enumeration description="Order Approve Validate" enumId="OrderValidate" enumTypeId="ServiceRegisterType"/></seed-data>
+    </entity>
+    <entity entity-name="ProductStoreApproveParam" package="mantle.product.store" use="configuration" cache="true">
+        <field name="storeApproveId" type="id" is-pk="true"/>
+        <field name="parameterName" type="text-short" is-pk="true"/>
+        <field name="parameterValue" type="text-medium"/>
+        <relationship type="one" related="mantle.product.store.ProductStoreApprove" short-alias="storeApprove"/>
+    </entity>
+
     <entity entity-name="ProductStoreCategory" package="mantle.product.store">
         <field name="productStoreId" type="id" is-pk="true"/>
         <field name="productCategoryId" type="id" is-pk="true"/>
@@ -153,6 +185,7 @@ along with this software (see the LICENSE.md file). If not, see
         <field name="emailTemplateId" type="id"/>
         <field name="headerImagePath" type="text-medium"/>
         <field name="detailLinkPath" type="text-medium"/>
+        <field name="webOrderBcc" type="text-medium"/>
         <relationship type="one" related="mantle.product.store.ProductStore" short-alias="store"/>
         <relationship type="one" title="ProductStoreEmailType" related="moqui.basic.Enumeration" short-alias="type">
             <key-map field-name="emailTypeEnumId"/></relationship>
@@ -179,6 +212,7 @@ along with this software (see the LICENSE.md file). If not, see
             <moqui.basic.Enumeration description="Shipment Shipped" enumId="PsetShipmentShipped" enumTypeId="ProductStoreEmailType"/>
             <moqui.basic.Enumeration description="Shipment Delivered" enumId="PsetShipmentDelivered" enumTypeId="ProductStoreEmailType"/>
             <moqui.basic.Enumeration description="Invoice Finalized" enumId="PsetInvoiceFinalized" enumTypeId="ProductStoreEmailType"/>
+            <moqui.basic.Enumeration description="Invoices Past Due" enumId="PsetInvoicesPastDue" enumTypeId="ProductStoreEmailType"/>
         </seed-data>
     </entity>
     <entity entity-name="ProductStoreFacility" package="mantle.product.store">
@@ -190,6 +224,7 @@ along with this software (see the LICENSE.md file). If not, see
         <relationship type="one" related="mantle.product.store.ProductStore" short-alias="store"/>
         <relationship type="one" related="mantle.facility.Facility" short-alias="facility"/>
     </entity>
+
     <entity entity-name="ProductStoreParty" package="mantle.product.store">
         <field name="productStoreId" type="id" is-pk="true"/>
         <field name="partyId" type="id" is-pk="true"/>
@@ -211,6 +246,16 @@ along with this software (see the LICENSE.md file). If not, see
         <relationship type="one" related="mantle.account.method.PaymentGatewayConfig" short-alias="config"/>
     </entity>
 
+    <entity entity-name="ProductStoreProduct" package="mantle.product.store" use="configuration" cache="true">
+        <field name="productStoreId" type="id" is-pk="true"/>
+        <field name="productId" type="id" is-pk="true"/>
+        <field name="signatureRequiredEnumId" type="id"/>
+        <relationship type="one" related="mantle.product.store.ProductStore" short-alias="store"/>
+        <relationship type="one" related="mantle.product.Product" short-alias="product"/>
+        <relationship type="one" title="SignatureRequired" related="moqui.basic.Enumeration" short-alias="signatureRequiredEnum">
+            <key-map field-name="signatureRequiredEnumId"/></relationship>
+    </entity>
+
     <entity entity-name="ProductStorePromotion" package="mantle.product.store" use="configuration" cache="true">
         <field name="storePromotionId" type="id" is-pk="true"/>
         <field name="productStoreId" type="id"/>
@@ -226,6 +271,7 @@ along with this software (see the LICENSE.md file). If not, see
         <field name="useLimitPerCustomer" type="number-integer"/>
         <field name="useLimitPerPromotion" type="number-integer"/>
         <field name="freeGroundShipping" type="text-indicator"/>
+        <relationship type="one" related="mantle.product.store.ProductStore" short-alias="store"/>
         <relationship type="one" related="moqui.service.ServiceRegister" short-alias="serviceRegister"/>
         <relationship type="many" related="mantle.product.store.ProductStorePromoParameter" short-alias="parameters">
             <key-map field-name="storePromotionId"/></relationship>
@@ -272,7 +318,7 @@ along with this software (see the LICENSE.md file). If not, see
         <field name="settingTypeEnumId" type="id" is-pk="true"/>
         <field name="fromDate" type="date-time" is-pk="true"/>
         <field name="thruDate" type="date-time"/>
-        <field name="settingValue" type="id"/>
+        <field name="settingValue" type="text-medium"/>
         <relationship type="one" related="mantle.product.store.ProductStore" short-alias="store"/>
         <relationship type="one" title="ProductStoreSettingType" related="moqui.basic.Enumeration" short-alias="type">
             <key-map field-name="settingTypeEnumId"/></relationship>
@@ -283,6 +329,28 @@ along with this software (see the LICENSE.md file). If not, see
             <moqui.basic.Enumeration enumCode="contentAttachmentLocation" description="Content Attachment Location" enumId="PsstContentAttachmentLoc" enumTypeId="ProductStoreSettingType"/>
             <moqui.basic.Enumeration enumCode="productImageLocation" description="Product Image Location" enumId="PsstProductImageLoc" enumTypeId="ProductStoreSettingType"/>
             <moqui.basic.Enumeration enumCode="getReturnLabels" description="Get Return Labels (true/false)" enumId="PsstGetReturnLabels" enumTypeId="ProductStoreSettingType"/>
+
+            <moqui.basic.Enumeration description="Ship Label From Name" enumId="PsstShipLabelName" enumTypeId="ProductStoreSettingType"/>
+            <moqui.basic.Enumeration description="Ship Label From Company" enumId="PsstShipLabelCompany" enumTypeId="ProductStoreSettingType"/>
+            <moqui.basic.Enumeration description="Ship Restrict Carriers (true/false)" enumId="PsstShipRestrictCarriers" enumTypeId="ProductStoreSettingType"/>
+
+            <moqui.basic.Enumeration description="Template Location Shipment Insert" enumId="PsstTemplateShipmentInsert" enumTypeId="ProductStoreSettingType"/>
+            <moqui.basic.Enumeration description="Template Location Shipment Pick Sheet" enumId="PsstTemplateShipmentPick" enumTypeId="ProductStoreSettingType"/>
+            <moqui.basic.Enumeration description="Template Location Shipment Pack Sheet" enumId="PsstTemplateShipmentPack" enumTypeId="ProductStoreSettingType"/>
+            <moqui.basic.Enumeration description="Template Location Shipment By Package" enumId="PsstTemplateShipmentByPackage" enumTypeId="ProductStoreSettingType"/>
+
+            <moqui.basic.Enumeration description="Template Location Invoice Print" enumId="PsstTemplateInvoicePrint" enumTypeId="ProductStoreSettingType"/>
+            <moqui.basic.Enumeration description="Template Location Order Print" enumId="PsstTemplateOrderPrint" enumTypeId="ProductStoreSettingType"/>
+
+            <moqui.basic.Enumeration description="Order Approve Warn New Customer (false to disable)" enumId="PsstOrdApproveNewCust" enumTypeId="ProductStoreSettingType"/>
+            <moqui.basic.Enumeration description="Order Approve Warn Address not Valid (false to disable)" enumId="PsstOrdApproveAddrNotValid" enumTypeId="ProductStoreSettingType"/>
+            <moqui.basic.Enumeration description="Order Approve Warn Address Missing (false to disable)" enumId="PsstOrdApproveAddrMissing" enumTypeId="ProductStoreSettingType"/>
+            <moqui.basic.Enumeration description="Order Approve Warn Std Devs Over Avg Total (default 3.0, 0 to disable)" enumId="PsstOrdApproveStdDevTotal" enumTypeId="ProductStoreSettingType"/>
+            <moqui.basic.Enumeration description="Order Approve Warn Std Devs Over Avg Product Qty (default 3.0, 0 to disable)" enumId="PsstOrdApproveStdDevProdQty" enumTypeId="ProductStoreSettingType"/>
+            <moqui.basic.Enumeration description="Order Approve Warn Inventory Not Available (false to disable)" enumId="PsstOrdApproveInventoryNotAvail" enumTypeId="ProductStoreSettingType"/>
+            <moqui.basic.Enumeration description="Order Approve Warn Percent Available Inventory (default 20, 0 to disable)" enumId="PsstOrdApprovePercAvailInv" enumTypeId="ProductStoreSettingType"/>
+            <moqui.basic.Enumeration description="Order Approve Warn Similar within 24hrs (false to disable)" enumId="PsstOrdApproveSimilar" enumTypeId="ProductStoreSettingType"/>
+            <moqui.basic.Enumeration description="Order Approve Warn Price Min/Max (false to disable)" enumId="PsstOrdApprovePriceMinMax" enumTypeId="ProductStoreSettingType"/>
         </seed-data>
     </entity>
 
@@ -290,6 +358,11 @@ along with this software (see the LICENSE.md file). If not, see
         <field name="productStoreId" type="id" is-pk="true"/>
         <field name="carrierPartyId" type="id" is-pk="true"/>
         <field name="shippingGatewayConfigId" type="id"/>
+        <field name="billingType" type="text-short"><description>For third party and other carrier account billing;
+            for Shippo valid values are SENDER, RECIPIENT, THIRD_PARTY</description></field>
+        <field name="billingAccount" type="text-short"><description>Third party or other carrier account number</description></field>
+        <field name="billingZip" type="text-short"/>
+        <field name="billingCountry" type="text-short"><description>For Shippo this is the 2 letter ISO country code</description></field>
         <relationship type="one" related="mantle.product.store.ProductStore" short-alias="store"/>
         <relationship type="one" title="Carrier" related="mantle.party.Party" short-alias="carrier">
             <key-map field-name="carrierPartyId"/></relationship>
@@ -324,15 +397,16 @@ along with this software (see the LICENSE.md file). If not, see
             <key-map field-name="spaceTypeEnumId"/></relationship>
         <relationship type="one" related="moqui.resource.wiki.WikiSpace" short-alias="wikiSpace"/>
         <seed-data>
+            <!-- NOTE: these enumId values go in URLs to keep small -->
             <moqui.basic.EnumerationType description="Product Store Wiki Space Type" enumTypeId="ProductStoreWikiSpaceType"/>
             <!-- full page content like about us, policies, etc -->
-            <moqui.basic.Enumeration description="Content - Full Page" enumId="PswstFullPage" enumTypeId="ProductStoreWikiSpaceType"/>
+            <moqui.basic.Enumeration description="Content - Full Page" enumId="PstFull" enumTypeId="ProductStoreWikiSpaceType"/>
             <!-- page snippet content including banners, carousel slides, etc; often referred to through a WikiPageCategory -->
-            <moqui.basic.Enumeration description="Content - Snippet" enumId="PswstSnippet" enumTypeId="ProductStoreWikiSpaceType"/>
+            <moqui.basic.Enumeration description="Content - Snippet" enumId="PstSnip" enumTypeId="ProductStoreWikiSpaceType"/>
             <!-- templates for information pages like header, footer, home, category, product, search, etc; server rendered, change frequently -->
-            <moqui.basic.Enumeration description="Template - Information (home, product, etc)" enumId="PswstTemplateInfo" enumTypeId="ProductStoreWikiSpaceType"/>
+            <moqui.basic.Enumeration description="Template - Information (home, product, etc)" enumId="PstTmpSrv" enumTypeId="ProductStoreWikiSpaceType"/>
             <!-- templates for interactive pages like checkout, profile, etc; client rendered, change less frequently -->
-            <moqui.basic.Enumeration description="Template - Interactive (checkout, profile, etc)" enumId="PswstTemplateInteractive" enumTypeId="ProductStoreWikiSpaceType"/>
+            <moqui.basic.Enumeration description="Template - Interactive (checkout, profile, etc)" enumId="PstTmpClt" enumTypeId="ProductStoreWikiSpaceType"/>
         </seed-data>
     </entity>
     <entity entity-name="ProductStoreWikiContent" package="mantle.product.store">
@@ -356,20 +430,38 @@ along with this software (see the LICENSE.md file). If not, see
         <seed-data>
             <moqui.basic.EnumerationType description="Product Store Content Type" enumTypeId="ProductStoreContentType"/>
 
-            <moqui.basic.Enumeration enumCode="headerTemplate" description="Header Template" enumId="PsctHeaderTemplate" enumTypeId="ProductStoreContentType"/>
-            <moqui.basic.Enumeration enumCode="footerTemplate" description="Footer Template" enumId="PsctFooterTemplate" enumTypeId="ProductStoreContentType"/>
+            <moqui.basic.Enumeration enumCode="template_client_header" description="Header Template - Client" enumId="PsctHeaderTemplate" enumTypeId="ProductStoreContentType"/>
+            <moqui.basic.Enumeration enumCode="template_client_footer" description="Footer Template - Client" enumId="PsctFooterTemplate" enumTypeId="ProductStoreContentType"/>
 
-            <moqui.basic.Enumeration enumCode="homeTemplate" description="Home Template" enumId="PsctHomeTemplate" enumTypeId="ProductStoreContentType"/>
-            <moqui.basic.Enumeration enumCode="searchTemplate" description="Search Template" enumId="PsctSearchTemplate" enumTypeId="ProductStoreContentType"/>
-            <moqui.basic.Enumeration enumCode="categoryTemplate" description="Category Template" enumId="PsctCategoryTemplate" enumTypeId="ProductStoreContentType"/>
-            <moqui.basic.Enumeration enumCode="categoryProductTemplate" description="Category Product Template" enumId="PsctCategoryProductTemplate" enumTypeId="ProductStoreContentType"/>
-            <moqui.basic.Enumeration enumCode="productTemplate" description="Product Template" enumId="PsctProductTemplate" enumTypeId="ProductStoreContentType"/>
+            <moqui.basic.Enumeration enumCode="template_client_home" description="Home Template - Client" enumId="PsctHomeTemplate" enumTypeId="ProductStoreContentType"/>
 
-            <moqui.basic.Enumeration enumCode="loginTemplate" description="Login Template" enumId="PsctLoginTemplate" enumTypeId="ProductStoreContentType"/>
-            <moqui.basic.Enumeration enumCode="profileTemplate" description="Profile Template" enumId="PsctProfileTemplate" enumTypeId="ProductStoreContentType"/>
-            <moqui.basic.Enumeration enumCode="orderHistoryTemplate" description="Order History Template" enumId="PsctOrderHistoryTemplate" enumTypeId="ProductStoreContentType"/>
-            <moqui.basic.Enumeration enumCode="orderDetailTemplate" description="Order Detail Template" enumId="PsctOrderDetailTemplate" enumTypeId="ProductStoreContentType"/>
-            <moqui.basic.Enumeration enumCode="cartTemplate" description="Cart Template" enumId="PsctCartTemplate" enumTypeId="ProductStoreContentType"/>
+            <moqui.basic.Enumeration enumCode="template_client_search" description="Search Template - Client" enumId="PsctSearchTemplate" enumTypeId="ProductStoreContentType"/>
+            <moqui.basic.Enumeration enumCode="template_client_category" description="Category Template - Client" enumId="PsctCategoryTemplate" enumTypeId="ProductStoreContentType"/>
+            <moqui.basic.Enumeration enumCode="template_client_product" description="Product Template - Client" enumId="PsctProductTemplate" enumTypeId="ProductStoreContentType"/>
+            <!-- consolidate these
+            <moqui.basic.Enumeration enumCode="template_client_categoryProduct" description="Category Product Template - Client" enumId="PsctCategoryProductTemplate" enumTypeId="ProductStoreContentType"/>
+            <moqui.basic.Enumeration enumCode="template_client_productImage" description="Product Image Template - Client" enumId="PsctProductImageTemplate" enumTypeId="ProductStoreContentType"/>
+            <moqui.basic.Enumeration enumCode="template_client_productReview" description="Product Review Template - Client" enumId="PsctProductReviewTemplate" enumTypeId="ProductStoreContentType"/>
+            <moqui.basic.Enumeration enumCode="template_client_starRating" description="Star Rating Template - Client" enumId="PsctProductTemplate" enumTypeId="ProductStoreContentType"/>
+            -->
+
+            <moqui.basic.Enumeration enumCode="template_client_login" description="Login Template - Client" enumId="PsctLoginTemplate" enumTypeId="ProductStoreContentType"/>
+            <moqui.basic.Enumeration enumCode="template_client_resetPassword" description="Reset Password Template - Client" enumId="PsctResetPasswordTemplate" enumTypeId="ProductStoreContentType"/>
+            <moqui.basic.Enumeration enumCode="template_client_account" description="Account Template - Client" enumId="PsctAccountTemplate" enumTypeId="ProductStoreContentType"/>
+            <moqui.basic.Enumeration enumCode="template_client_accountCreate" description="Account Create Template - Client" enumId="PsctAccountCreateTemplate" enumTypeId="ProductStoreContentType"/>
+            <moqui.basic.Enumeration enumCode="template_client_orderHistory" description="Order History Template - Client" enumId="PsctOrderHistoryTemplate" enumTypeId="ProductStoreContentType"/>
+            <moqui.basic.Enumeration enumCode="template_client_orderDetail" description="Order Detail Template - Client" enumId="PsctOrderDetailTemplate" enumTypeId="ProductStoreContentType"/>
+
+            <moqui.basic.Enumeration enumCode="template_client_checkout" description="Checkout Template - Client" enumId="PsctCheckoutTemplate" enumTypeId="ProductStoreContentType"/>
+            <moqui.basic.Enumeration enumCode="template_client_checkoutHeader" description="Checkout Header Template - Client" enumId="PsctCheckoutHeaderTemplate" enumTypeId="ProductStoreContentType"/>
+            <moqui.basic.Enumeration enumCode="template_client_checkoutSuccess" description="Checkout Success Template - Client" enumId="PsctCheckoutSuccessTemplate" enumTypeId="ProductStoreContentType"/>
+
+            <moqui.basic.Enumeration enumCode="template_server_root" description="Root Template - Server" enumId="PsctRootTemplateServer" enumTypeId="ProductStoreContentType"/>
+            <moqui.basic.Enumeration enumCode="template_server_header" description="Header Template - Server" enumId="PsctHeaderTemplateServer" enumTypeId="ProductStoreContentType"/>
+            <moqui.basic.Enumeration enumCode="template_server_footer" description="Footer Template - Server" enumId="PsctFooterTemplateServer" enumTypeId="ProductStoreContentType"/>
+            <moqui.basic.Enumeration enumCode="template_server_home" description="Home Template - Server" enumId="PsctHomeTemplateServer" enumTypeId="ProductStoreContentType"/>
+            <moqui.basic.Enumeration enumCode="template_server_category" description="Category Template - Server" enumId="PsctCategoryTemplateServer" enumTypeId="ProductStoreContentType"/>
+            <moqui.basic.Enumeration enumCode="template_server_product" description="Product Template - Server" enumId="PsctProductTemplateServer" enumTypeId="ProductStoreContentType"/>
         </seed-data>
     </entity>
 
